@@ -6,7 +6,7 @@
     <authorEmail>philipp@salmutter.net</authorEmail>
     <copyright>(C) 2025 salmutter.net</copyright>
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-    <version>0.4.0</version>
+    <version>0.4.1</version>
     <description><![CDATA[<html>
         <h1>Image Transformer</h1>
         <p>The plugin allows you to transform images and cache them. You can use this function <code>Imagetransformer::generateUrl()</code> to generate the image URLs in your template. The rest just works like magic.</p>
@@ -214,6 +214,23 @@
                        default="images-cache"
                        description="The Folder, where the redered images are cached."
                        label="Image Cache Folder" />
+
+                <field name="fetch-missing-from-live"
+                       type="radio"
+                       default="0"
+                       label="Fetch missing images from LIVE"
+                       class="btn-group btn-group-yesno"
+                       description="If an image is missing locally, the plugin can try to download it from a LIVE site (DEV/local convenience).">
+                    <option value="0">No</option>
+                    <option value="1">Yes</option>
+                </field>
+
+                <field name="live-base-url"
+                       type="text"
+                       default=""
+                       showon="fetch-missing-from-live:1"
+                       label="LIVE Base URL"
+                       description="Base URL of the LIVE site, e.g. https://example.com (used only when fetching missing images is enabled)." />
             </fieldset>
         </fields>
     </config>
