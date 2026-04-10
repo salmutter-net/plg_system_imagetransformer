@@ -6,7 +6,7 @@
     <authorEmail>philipp@salmutter.net</authorEmail>
     <copyright>(C) 2025 salmutter.net</copyright>
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-    <version>0.3</version>
+    <version>0.4.0</version>
     <description><![CDATA[<html>
         <h1>Image Transformer</h1>
         <p>The plugin allows you to transform images and cache them. You can use this function <code>Imagetransformer::generateUrl()</code> to generate the image URLs in your template. The rest just works like magic.</p>

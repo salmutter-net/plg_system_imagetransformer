@@ -16,6 +16,7 @@ use Joomla\CMS\Factory;
 use Joomla\CMS\HTML\HTMLHelper;
 use Joomla\CMS\Log\Log;
 use Joomla\CMS\Plugin\CMSPlugin;
+use Joomla\CMS\Router\Exception\RouteNotFoundException;
 use Joomla\CMS\Uri\Uri;
 use Joomla\Registry\Registry;
 use League\Glide\Responses\PsrResponseFactory;
@@ -52,12 +53,36 @@ final class Imagetransformer extends CMSPlugin
         if (preg_match('#^/img/(.+)#', $path, $matches))
         {
             $path = '/img/' . $matches[1];
-            $realPath = $matches[1];
-            $elems = explode("&", $query);
+            $realPath = rawurldecode($matches[1]);
+
+            if ($realPath === ''
+                || str_contains($realPath, "\0")
+                || str_contains($realPath, '..')
+                || str_contains($realPath, '\\')
+                || str_starts_with($realPath, '/')) {
+                $this->respondNotFound();
+            }
+
             $params = [];
-            foreach($elems as $elem){
-                $items = explode("=", $elem);
-                $params[$items[0]] = $items[1];
+            foreach (explode('&', (string) $query) as $part) {
+                if ($part === '') {
+                    continue;
+                }
+
+                // Strict mode: any param without "=" makes the request invalid.
+                if (!str_contains($part, '=')) {
+                    $this->respondNotFound();
+                }
+
+                [$rawKey, $rawValue] = explode('=', $part, 2);
+                $key = rawurldecode($rawKey);
+                $value = rawurldecode($rawValue);
+
+                if ($key === '') {
+                    $this->respondNotFound();
+                }
+
+                $params[$key] = $value;
             }
             $this->imageResponse($path, $params, $realPath);
         }
@@ -85,9 +110,16 @@ final class Imagetransformer extends CMSPlugin
         }
 
         // Set complicated sign key
-        $signkey = $pluginParams->get('signkey');
-        if ( empty( $signkey ) ) {
-            Log::add('PlgSystemImageTransformer: Signkey is empty', Log::WARNING, 'error' );
+        $signkey = (string) $pluginParams->get('signkey');
+        if ($signkey === '' || strlen($signkey) < 32) {
+            Log::add('PlgSystemImageTransformer: Signkey is empty or too short (min 32 bytes)', Log::WARNING, 'error' );
+
+            $query = '';
+            if (is_array($params) && !empty($params)) {
+                $query = '?' . http_build_query($params);
+            }
+
+            return rtrim(Uri::root(), '/') . '/img/' . ltrim((string) $path, '/') . $query;
         }
 
         // Generate a URL
@@ -104,22 +136,25 @@ final class Imagetransformer extends CMSPlugin
         $imageCacheFolder = JPATH_ROOT . DIRECTORY_SEPARATOR . $pluginParams->get('image-cache-folder', 'images-cache');
 
         // Create cache directory, if not existent
-        if ( !@mkdir( $concurrentDirectory = $imageCacheFolder, 664, true ) && !is_dir( $concurrentDirectory ) ) {
-            throw new \RuntimeException( sprintf( 'Directory "%s" was not created', $concurrentDirectory ) );
+        $concurrentDirectory = $imageCacheFolder;
+        if (!is_dir($concurrentDirectory) && !mkdir($concurrentDirectory, 0775, true) && !is_dir($concurrentDirectory)) {
+            $this->respondNotFound();
         }
 
         // Verify HTTP signature
         try {
             // Set complicated sign key
             $signkey = (string)$pluginParams->get('signkey');
+            if ($signkey === '' || strlen($signkey) < 32) {
+                $this->respondNotFound('Image Transformer misconfigured: signkey is empty or too short');
+            }
 
             // Validate HTTP signature
             $path = urldecode($path);
             SignatureFactory::create($signkey)->validateRequest($path, $params);
 
         } catch (SignatureException $e) {
-            // Handle error
-            throw new \RuntimeException($e->getMessage(), 404);
+            $this->respondNotFound();
         }
 
         // Setup Glide server
@@ -138,5 +173,10 @@ final class Imagetransformer extends CMSPlugin
 
         $imageTransformationServer->outputImage($realPath, $params);
         exit;
+    }
+
+    private function respondNotFound(string $message = 'Invalid image transformation request'): void
+    {
+        throw new RouteNotFoundException($message, 404);
     }
 }
