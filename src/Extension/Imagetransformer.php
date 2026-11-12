@@ -482,7 +482,7 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
             "com_content.*\ncom_contact.*\ncom_tags.*\nmod_custom.content"
         );
 
-        foreach (preg_split('/[\r\n;]+/', $patterns) as $pattern) {
+        foreach (preg_split('/[\s;]+/', $patterns) as $pattern) {
             $pattern = trim($pattern);
 
             if ($pattern === '') {
