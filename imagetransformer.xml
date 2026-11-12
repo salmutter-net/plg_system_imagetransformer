@@ -255,6 +255,7 @@
                 <field name="content-widths"
                        type="text"
                        default="480,768,1200,1600"
+                       hint="480,768,1200,1600"
                        showon="content-images:1"
                        label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTWIDTHS_LABEL"
                        description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTWIDTHS_DESC" />
@@ -262,6 +263,7 @@
                 <field name="content-sizes"
                        type="text"
                        default="auto"
+                       hint="auto"
                        showon="content-images:1"
                        label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTSIZES_LABEL"
                        description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTSIZES_DESC" />
@@ -305,6 +307,7 @@
                        rows="5"
                        cols="40"
                        default=""
+                       hint="team-photo: w=400,h=533,fit=crop&#10;wide: w=1200,h=675,fit=crop"
                        showon="content-images:1"
                        label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTSIZEDEF_LABEL"
                        description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTSIZEDEF_DESC" />
@@ -334,6 +337,7 @@
                 <field name="content-intro-params"
                        type="text"
                        default=""
+                       hint="w=800,h=450,fit=crop"
                        showon="content-images:1"
                        label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTINTROPARAMS_LABEL"
                        description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTINTROPARAMS_DESC" />
@@ -341,6 +345,7 @@
                 <field name="content-fulltext-params"
                        type="text"
                        default=""
+                       hint="w=1200,h=675,fit=crop"
                        showon="content-images:1"
                        label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFULLTEXTPARAMS_LABEL"
                        description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFULLTEXTPARAMS_DESC" />
@@ -350,6 +355,7 @@
                        rows="2"
                        cols="30"
                        default=""
+                       hint="12,45,78"
                        showon="content-images:1"
                        label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTEXCLARTICLES_LABEL"
                        description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTEXCLARTICLES_DESC" />
@@ -359,6 +365,7 @@
                        rows="2"
                        cols="30"
                        default=""
+                       hint="9,17"
                        showon="content-images:1"
                        label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTEXCLCATEGORIES_LABEL"
                        description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTEXCLCATEGORIES_DESC" />
