@@ -425,10 +425,55 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
             return;
         }
 
-        foreach (['text', 'introtext', 'fulltext'] as $property) {
+        foreach (['text', 'introtext', 'fulltext', 'description'] as $property) {
             if (!empty($article->{$property}) && \is_string($article->{$property})) {
                 $article->{$property} = $this->transformImagesInHtml($article->{$property});
             }
+        }
+
+        $this->transformStructuredImages($article);
+    }
+
+    /**
+     * Transform image_intro/image_fulltext in the article's images JSON
+     * (like the old imgresizecache plugin did). Originals are kept as
+     * _image_intro/_image_fulltext for use in custom layouts.
+     */
+    private function transformStructuredImages(object $article): void
+    {
+        if (empty($article->images) || !\is_string($article->images)) {
+            return;
+        }
+
+        $introParams    = $this->parseGlideParams((string) $this->params->get('content-intro-params', ''));
+        $fulltextParams = $this->parseGlideParams((string) $this->params->get('content-fulltext-params', ''));
+
+        if ($introParams === [] && $fulltextParams === []) {
+            return;
+        }
+
+        $images = json_decode($article->images);
+
+        if (!\is_object($images)) {
+            return;
+        }
+
+        $changed = false;
+
+        if ($introParams !== [] && !empty($images->image_intro) && \is_string($images->image_intro)) {
+            $images->_image_intro = $images->image_intro;
+            $images->image_intro  = self::generateUrl($images->image_intro, $introParams);
+            $changed = true;
+        }
+
+        if ($fulltextParams !== [] && !empty($images->image_fulltext) && \is_string($images->image_fulltext)) {
+            $images->_image_fulltext = $images->image_fulltext;
+            $images->image_fulltext  = self::generateUrl($images->image_fulltext, $fulltextParams);
+            $changed = true;
+        }
+
+        if ($changed) {
+            $article->images = json_encode($images);
         }
     }
 
@@ -476,6 +521,7 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
 
         $sizes        = trim((string) $this->params->get('content-sizes', 'auto'));
         $lazyload     = (bool) $this->params->get('content-lazyload', 1);
+        $setDimensions = (bool) $this->params->get('content-set-dimensions', 1);
         $definitions  = $this->parseSizeDefinitions((string) $this->params->get('content-size-definitions', ''));
         $defaultParams = array_filter([
             'fit' => (string) $this->params->get('content-fit', 'max'),
@@ -485,7 +531,7 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
 
         return preg_replace_callback(
             '/<img\b[^>]*>/i',
-            function (array $matches) use ($widths, $sizes, $lazyload, $definitions, $defaultParams) {
+            function (array $matches) use ($widths, $sizes, $lazyload, $setDimensions, $definitions, $defaultParams) {
                 $img = $matches[0];
 
                 if (!preg_match('/\bsrc\s*=\s*(["\'])(.*?)\1/i', $img, $srcMatch) || trim($srcMatch[2]) === '') {
@@ -527,8 +573,10 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
                     }
                 }
 
-                // Adjust width/height attributes proportionally to the base width
-                $newImg = $this->adjustDimensions($newImg, $widths[0]);
+                // Fill in missing width/height attributes (CLS), keep existing ones
+                if ($setDimensions) {
+                    $newImg = $this->fillDimensions($newImg, $src);
+                }
 
                 if ($lazyload && !preg_match('/\bloading\s*=/i', $newImg)) {
                     $newImg = preg_replace('/<img\b/i', '<img loading="lazy"', $newImg, 1);
@@ -556,19 +604,7 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
 
             [$class, $optString] = explode(':', $line, 2);
             $class = trim($class);
-            $opts  = [];
-
-            foreach (explode(',', $optString) as $pair) {
-                if (!str_contains($pair, '=')) {
-                    continue;
-                }
-                [$key, $value] = explode('=', $pair, 2);
-                $key = trim($key);
-                $value = trim($value);
-                if ($key !== '' && $value !== '') {
-                    $opts[$key] = is_numeric($value) ? $value + 0 : $value;
-                }
-            }
+            $opts  = $this->parseGlideParams($optString);
 
             if ($class !== '' && $opts !== []) {
                 $result[$class] = $opts;
@@ -576,6 +612,28 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
         }
 
         return $result;
+    }
+
+    /**
+     * Parse a Glide param string like "w=700,h=400,fit=crop,q=80" into an array.
+     */
+    private function parseGlideParams(string $params): array
+    {
+        $opts = [];
+
+        foreach (explode(',', $params) as $pair) {
+            if (!str_contains($pair, '=')) {
+                continue;
+            }
+            [$key, $value] = explode('=', $pair, 2);
+            $key = trim($key);
+            $value = trim($value);
+            if ($key !== '' && $value !== '') {
+                $opts[$key] = is_numeric($value) ? $value + 0 : $value;
+            }
+        }
+
+        return $opts;
     }
 
     /**
@@ -617,21 +675,63 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
     }
 
     /**
-     * If the tag has width+height attributes, scale them to the base width
-     * to keep the aspect ratio and avoid layout shift.
+     * Keep existing width/height attributes untouched (they define the
+     * aspect ratio for the browser). If one or both are missing, fill them
+     * from the intrinsic image size so the layout does not shift.
      */
-    private function adjustDimensions(string $img, int $baseWidth): string
+    private function fillDimensions(string $img, string $src): string
     {
-        if (!preg_match('/\bwidth\s*=\s*(["\'])(\d+)\1/i', $img, $wMatch)
-            || !preg_match('/\bheight\s*=\s*(["\'])(\d+)\1/i', $img, $hMatch)
-            || (int) $wMatch[2] === 0) {
+        $hasWidth  = (bool) preg_match('/\bwidth\s*=\s*(["\'])(\d+)\1/i', $img, $wMatch);
+        $hasHeight = (bool) preg_match('/\bheight\s*=\s*(["\'])(\d+)\1/i', $img, $hMatch);
+
+        if ($hasWidth && $hasHeight) {
             return $img;
         }
 
-        $ratio  = (int) $hMatch[2] / (int) $wMatch[2];
-        $newImg = $this->replaceImgAttribute($img, 'width', (string) $baseWidth);
+        $size = $this->intrinsicImageSize($src);
 
-        return $this->replaceImgAttribute($newImg, 'height', (string) (int) round($baseWidth * $ratio));
+        if ($size === null || $size[0] <= 0 || $size[1] <= 0) {
+            return $img;
+        }
+
+        if (!$hasWidth && !$hasHeight) {
+            $img = $this->replaceImgAttribute($img, 'width', (string) $size[0]);
+            return $this->replaceImgAttribute($img, 'height', (string) $size[1]);
+        }
+
+        if (!$hasWidth) {
+            $width = (int) round(((int) $hMatch[2]) * $size[0] / $size[1]);
+            return $this->replaceImgAttribute($img, 'width', (string) $width);
+        }
+
+        $height = (int) round(((int) $wMatch[2]) * $size[1] / $size[0]);
+        return $this->replaceImgAttribute($img, 'height', (string) $height);
+    }
+
+    /**
+     * Resolve the intrinsic size of a local image (cached per request).
+     *
+     * @return  array{0:int,1:int}|null
+     */
+    private function intrinsicImageSize(string $src): ?array
+    {
+        static $cache = [];
+
+        if (array_key_exists($src, $cache)) {
+            return $cache[$src];
+        }
+
+        $cleanSrc = HTMLHelper::cleanImageURL($src);
+        $path = $cleanSrc->url !== '' ? $cleanSrc->url : $src;
+        $path = urldecode(parse_url($path, PHP_URL_PATH) ?: '');
+
+        // Strip a configured media-folder prefix is unnecessary here:
+        // the path must resolve relative to the site root.
+        $localPath = JPATH_ROOT . '/' . ltrim($path, '/');
+
+        $size = is_file($localPath) ? @getimagesize($localPath) : false;
+
+        return $cache[$src] = ($size !== false) ? [$size[0], $size[1]] : null;
     }
 
     private function respondNotFound(string $message = 'Invalid image transformation request'): void
