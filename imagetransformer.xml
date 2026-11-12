@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <extension type="plugin" group="system" method="upgrade">
-    <name>Image Transformer</name>
+    <name>PLG_SYSTEM_IMAGETRANSFORMER</name>
     <creationDate>2025-02</creationDate>
     <author>DI Philipp Salmutter</author>
     <authorEmail>philipp@salmutter.net</authorEmail>
     <copyright>(C) 2025 salmutter.net</copyright>
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-    <version>0.4.1</version>
+    <version>0.5.0</version>
     <description><![CDATA[<html>
         <h1>Image Transformer</h1>
         <p>The plugin allows you to transform images and cache them. You can use this function <code>Imagetransformer::generateUrl()</code> to generate the image URLs in your template. The rest just works like magic.</p>
@@ -191,47 +191,156 @@
         <folder plugin="imagetransformer">services</folder>
         <folder>src</folder>
         <folder>vendor</folder>
+        <folder>language</folder>
     </files>
+    <languages>
+        <language tag="en-GB">language/en-GB/en-GB.plg_system_imagetransformer.ini</language>
+        <language tag="en-GB">language/en-GB/en-GB.plg_system_imagetransformer.sys.ini</language>
+        <language tag="de-DE">language/de-DE/de-DE.plg_system_imagetransformer.ini</language>
+        <language tag="de-DE">language/de-DE/de-DE.plg_system_imagetransformer.sys.ini</language>
+    </languages>
     <config>
         <fields name="params">
-            <fieldset name="basic">
+            <fieldset name="basic" label="PLG_SYSTEM_IMAGETRANSFORMER_FIELDSET_BASIC">
                 <field name="signkey"
                        type="text"
                        default=""
                        required="true"
-                       label="Signkey (min 256 Bit)" />
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_SIGNKEY_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_SIGNKEY_DESC" />
 
                 <field name="image-folder"
                        type="text"
                        required="true"
                        default="images"
-                       description="The Folder, where the images are stored."
-                       label="Image Folder (Media root)" />
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_IMAGEFOLDER_DESC"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_IMAGEFOLDER_LABEL" />
 
                 <field name="image-cache-folder"
                        type="text"
                        required="true"
                        default="images-cache"
-                       description="The Folder, where the redered images are cached."
-                       label="Image Cache Folder" />
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CACHEFOLDER_DESC"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CACHEFOLDER_LABEL" />
 
                 <field name="fetch-missing-from-live"
                        type="radio"
                        default="0"
-                       label="Fetch missing images from LIVE"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_FETCHMISSING_LABEL"
                        class="btn-group btn-group-yesno"
-                       description="If an image is missing locally, the plugin can try to download it from a LIVE site (DEV/local convenience).">
-                    <option value="0">No</option>
-                    <option value="1">Yes</option>
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_FETCHMISSING_DESC">
+                    <option value="0">JNO</option>
+                    <option value="1">JYES</option>
                 </field>
 
                 <field name="live-base-url"
                        type="text"
                        default=""
                        showon="fetch-missing-from-live:1"
-                       label="LIVE Base URL"
-                       description="Base URL of the LIVE site, e.g. https://example.com (used only when fetching missing images is enabled)." />
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_LIVEBASEURL_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_LIVEBASEURL_DESC" />
+            </fieldset>
+
+            <fieldset name="content_images" label="PLG_SYSTEM_IMAGETRANSFORMER_FIELDSET_CONTENT">
+                <field name="content-images"
+                       type="radio"
+                       default="0"
+                       class="btn-group btn-group-yesno"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTIMAGES_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTIMAGES_DESC">
+                    <option value="0">JNO</option>
+                    <option value="1">JYES</option>
+                </field>
+
+                <field name="content-widths"
+                       type="text"
+                       default="480,768,1200,1600"
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTWIDTHS_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTWIDTHS_DESC" />
+
+                <field name="content-sizes"
+                       type="text"
+                       default="auto"
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTSIZES_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTSIZES_DESC" />
+
+                <field name="content-fit"
+                       type="list"
+                       default="max"
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFIT_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFIT_DESC">
+                    <option value="max">PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFIT_MAX</option>
+                    <option value="contain">contain</option>
+                    <option value="crop">crop</option>
+                    <option value="stretch">stretch</option>
+                    <option value="fill">fill</option>
+                </field>
+
+                <field name="content-quality"
+                       type="number"
+                       default="75"
+                       min="1"
+                       max="100"
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTQUALITY_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTQUALITY_DESC" />
+
+                <field name="content-format"
+                       type="list"
+                       default=""
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFORMAT_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFORMAT_DESC">
+                    <option value="">PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFORMAT_ORIGINAL</option>
+                    <option value="webp">WebP</option>
+                    <option value="avif">AVIF</option>
+                    <option value="pjpg">PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFORMAT_PJPG</option>
+                </field>
+
+                <field name="content-size-definitions"
+                       type="textarea"
+                       rows="5"
+                       cols="40"
+                       default=""
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTSIZEDEF_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTSIZEDEF_DESC" />
+
+                <field name="content-lazyload"
+                       type="radio"
+                       default="1"
+                       class="btn-group btn-group-yesno"
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTLAZY_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTLAZY_DESC">
+                    <option value="0">JNO</option>
+                    <option value="1">JYES</option>
+                </field>
+
+                <field name="content-exclude-articles"
+                       type="textarea"
+                       rows="2"
+                       cols="30"
+                       default=""
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTEXCLARTICLES_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTEXCLARTICLES_DESC" />
+
+                <field name="content-exclude-categories"
+                       type="textarea"
+                       rows="2"
+                       cols="30"
+                       default=""
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTEXCLCATEGORIES_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTEXCLCATEGORIES_DESC" />
             </fieldset>
         </fields>
     </config>
+    <updateservers>
+        <server type="extension" name="Image Transformer">https://raw.githubusercontent.com/salmutter-net/plg_system_imagetransformer/main/update.xml</server>
+    </updateservers>
 </extension>

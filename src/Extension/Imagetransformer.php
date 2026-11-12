@@ -24,6 +24,8 @@ use League\Glide\Responses\PsrResponseFactory;
 use League\Glide\ServerFactory;
 use League\Glide\Urls\UrlBuilderFactory;
 use Joomla\CMS\Plugin\PluginHelper;
+use Joomla\Event\Event;
+use Joomla\Event\SubscriberInterface;
 use League\Glide\Signatures\SignatureFactory;
 use League\Glide\Signatures\SignatureException;
 
@@ -33,8 +35,22 @@ use League\Glide\Signatures\SignatureException;
 
 require_once __DIR__ . '/../../vendor/autoload.php';
 
-final class Imagetransformer extends CMSPlugin
+final class Imagetransformer extends CMSPlugin implements SubscriberInterface
 {
+
+    /**
+     * Returns an array of events this subscriber will listen to.
+     * Required for Joomla 5/6 compatibility.
+     *
+     * @return  array
+     */
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            'onAfterInitialise' => 'onAfterInitialise',
+            'onContentPrepare'  => 'onContentPrepare',
+        ];
+    }
 
     public function onAfterInitialise()
     {
@@ -373,6 +389,249 @@ final class Imagetransformer extends CMSPlugin
         }
 
         @rmdir($tmpRoot);
+    }
+
+    /**
+     * Rewrite <img> tags in article texts through the transformer.
+     *
+     * @param   Event  $event
+     *
+     * @return  void
+     */
+    public function onContentPrepare(Event $event): void
+    {
+        $app = Factory::getApplication();
+
+        if (!$app->isClient('site') || !(bool) $this->params->get('content-images', 0)) {
+            return;
+        }
+
+        $context = (string) $event->getArgument('context', '');
+        $allowedContexts = [
+            'com_content.article',
+            'com_content.category',
+            'com_content.featured',
+            'com_content.categories',
+            'mod_custom.content',
+        ];
+
+        if (!\in_array($context, $allowedContexts, true)) {
+            return;
+        }
+
+        $article = $event->getArgument('subject', null);
+
+        if (!\is_object($article) || $this->isExcluded($article)) {
+            return;
+        }
+
+        foreach (['text', 'introtext', 'fulltext'] as $property) {
+            if (!empty($article->{$property}) && \is_string($article->{$property})) {
+                $article->{$property} = $this->transformImagesInHtml($article->{$property});
+            }
+        }
+    }
+
+    /**
+     * Check article/category exclusion lists.
+     */
+    private function isExcluded(object $article): bool
+    {
+        $articleIds = $this->parseIdList((string) $this->params->get('content-exclude-articles', ''));
+        $categoryIds = $this->parseIdList((string) $this->params->get('content-exclude-categories', ''));
+
+        if (isset($article->id) && \in_array((int) $article->id, $articleIds, true)) {
+            return true;
+        }
+
+        if (isset($article->catid) && \in_array((int) $article->catid, $categoryIds, true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function parseIdList(string $list): array
+    {
+        return array_values(array_filter(array_map('intval', array_map('trim', explode(',', $list)))));
+    }
+
+    /**
+     * Find <img> tags in a HTML fragment and rewrite them to transformed URLs
+     * with srcset/sizes/loading attributes.
+     */
+    private function transformImagesInHtml(string $html): string
+    {
+        if (!str_contains($html, '<img')) {
+            return $html;
+        }
+
+        $widths = $this->parseIdList((string) $this->params->get('content-widths', '480,768,1200,1600'));
+
+        if (empty($widths)) {
+            return $html;
+        }
+
+        sort($widths);
+
+        $sizes        = trim((string) $this->params->get('content-sizes', 'auto'));
+        $lazyload     = (bool) $this->params->get('content-lazyload', 1);
+        $definitions  = $this->parseSizeDefinitions((string) $this->params->get('content-size-definitions', ''));
+        $defaultParams = array_filter([
+            'fit' => (string) $this->params->get('content-fit', 'max'),
+            'q'   => (int) $this->params->get('content-quality', 75),
+            'fm'  => trim((string) $this->params->get('content-format', '')) ?: null,
+        ]);
+
+        return preg_replace_callback(
+            '/<img\b[^>]*>/i',
+            function (array $matches) use ($widths, $sizes, $lazyload, $definitions, $defaultParams) {
+                $img = $matches[0];
+
+                if (!preg_match('/\bsrc\s*=\s*(["\'])(.*?)\1/i', $img, $srcMatch) || trim($srcMatch[2]) === '') {
+                    return $img;
+                }
+
+                $src = $srcMatch[2];
+
+                // Skip data URIs, external images and already transformed URLs
+                if (str_starts_with($src, 'data:')
+                    || str_contains($src, '://')
+                    || str_starts_with($src, '//')
+                    || str_contains($src, '/img/')) {
+                    return $img;
+                }
+
+                // Skip images explicitly marked
+                if (preg_match('/\bclass\s*=\s*(["\'])(.*?)\1/i', $img, $classMatch)
+                    && preg_match('/\bno-transform\b/', $classMatch[2])) {
+                    return $img;
+                }
+
+                // Class-based size definition? -> single URL, no srcset
+                $definition = $this->matchSizeDefinition($img, $definitions);
+
+                if ($definition !== null) {
+                    $newImg = $this->replaceImgAttribute($img, 'src', self::generateUrl($src, $definition));
+                } else {
+                    $srcset = [];
+                    foreach ($widths as $width) {
+                        $srcset[] = self::generateUrl($src, ['w' => $width] + $defaultParams) . ' ' . $width . 'w';
+                    }
+
+                    $newImg = $this->replaceImgAttribute($img, 'src', self::generateUrl($src, ['w' => $widths[0]] + $defaultParams));
+                    $newImg = $this->replaceImgAttribute($newImg, 'srcset', implode(', ', $srcset));
+
+                    if ($sizes !== '') {
+                        $newImg = $this->replaceImgAttribute($newImg, 'sizes', $sizes);
+                    }
+                }
+
+                // Adjust width/height attributes proportionally to the base width
+                $newImg = $this->adjustDimensions($newImg, $widths[0]);
+
+                if ($lazyload && !preg_match('/\bloading\s*=/i', $newImg)) {
+                    $newImg = preg_replace('/<img\b/i', '<img loading="lazy"', $newImg, 1);
+                }
+
+                return $newImg;
+            },
+            $html
+        );
+    }
+
+    /**
+     * Parse "classname: w=700,h=400,fit=crop" lines into [classname => params].
+     */
+    private function parseSizeDefinitions(string $definitions): array
+    {
+        $result = [];
+
+        foreach (preg_split('/[\r\n;]+/', $definitions) as $line) {
+            $line = trim($line);
+
+            if ($line === '' || !str_contains($line, ':')) {
+                continue;
+            }
+
+            [$class, $optString] = explode(':', $line, 2);
+            $class = trim($class);
+            $opts  = [];
+
+            foreach (explode(',', $optString) as $pair) {
+                if (!str_contains($pair, '=')) {
+                    continue;
+                }
+                [$key, $value] = explode('=', $pair, 2);
+                $key = trim($key);
+                $value = trim($value);
+                if ($key !== '' && $value !== '') {
+                    $opts[$key] = is_numeric($value) ? $value + 0 : $value;
+                }
+            }
+
+            if ($class !== '' && $opts !== []) {
+                $result[$class] = $opts;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Return the size-definition params for the first matching class, or null.
+     */
+    private function matchSizeDefinition(string $img, array $definitions): ?array
+    {
+        if ($definitions === []
+            || !preg_match('/\bclass\s*=\s*(["\'])(.*?)\1/i', $img, $classMatch)) {
+            return null;
+        }
+
+        foreach (preg_split('/\s+/', trim($classMatch[2])) as $class) {
+            if (isset($definitions[$class])) {
+                return $definitions[$class];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Replace an existing attribute value or add the attribute to the tag.
+     */
+    private function replaceImgAttribute(string $img, string $attr, string $value): string
+    {
+        $value = htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+
+        if (preg_match('/\b' . preg_quote($attr, '/') . '\s*=/i', $img)) {
+            return preg_replace(
+                '/\b' . preg_quote($attr, '/') . '\s*=\s*(["\']).*?\1/i',
+                $attr . '="' . $value . '"',
+                $img,
+                1
+            );
+        }
+
+        return preg_replace('/<img\b/i', '<img ' . $attr . '="' . $value . '"', $img, 1);
+    }
+
+    /**
+     * If the tag has width+height attributes, scale them to the base width
+     * to keep the aspect ratio and avoid layout shift.
+     */
+    private function adjustDimensions(string $img, int $baseWidth): string
+    {
+        if (!preg_match('/\bwidth\s*=\s*(["\'])(\d+)\1/i', $img, $wMatch)
+            || !preg_match('/\bheight\s*=\s*(["\'])(\d+)\1/i', $img, $hMatch)
+            || (int) $wMatch[2] === 0) {
+            return $img;
+        }
+
+        $ratio  = (int) $hMatch[2] / (int) $wMatch[2];
+        $newImg = $this->replaceImgAttribute($img, 'width', (string) $baseWidth);
+
+        return $this->replaceImgAttribute($newImg, 'height', (string) (int) round($baseWidth * $ratio));
     }
 
     private function respondNotFound(string $message = 'Invalid image transformation request'): void
