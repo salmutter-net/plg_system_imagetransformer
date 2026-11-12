@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2
+- Fix: category descriptions, tag pages and contact pages were not transformed — their content.prepare contexts (`com_content.category.description`, `com_tags.tag`, `com_contact.*`) were missing
+- New: `content-contexts` option — configurable context allowlist, one per line with `*` wildcard support
+
 ## 0.5.1
 - Fix: keep existing width/height attributes on transformed article images; fill missing ones from intrinsic size (new `content-set-dimensions` option)
 - New: `content-intro-params` / `content-fulltext-params` transform `image_intro`/`image_fulltext` in the article images field (originals kept as `_image_intro`/`_image_fulltext`)

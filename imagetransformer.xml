@@ -350,6 +350,18 @@
                        label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFULLTEXTPARAMS_LABEL"
                        description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTFULLTEXTPARAMS_DESC" />
 
+                <field name="content-contexts"
+                       type="textarea"
+                       rows="4"
+                       cols="40"
+                       default="com_content.*
+com_contact.*
+com_tags.*
+mod_custom.content"
+                       showon="content-images:1"
+                       label="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTCONTEXTS_LABEL"
+                       description="PLG_SYSTEM_IMAGETRANSFORMER_FIELD_CONTENTCONTEXTS_DESC" />
+
                 <field name="content-exclude-articles"
                        type="textarea"
                        rows="2"

@@ -407,15 +407,8 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
         }
 
         $context = (string) $event->getArgument('context', '');
-        $allowedContexts = [
-            'com_content.article',
-            'com_content.category',
-            'com_content.featured',
-            'com_content.categories',
-            'mod_custom.content',
-        ];
 
-        if (!\in_array($context, $allowedContexts, true)) {
+        if (!$this->isAllowedContext($context)) {
             return;
         }
 
@@ -475,6 +468,35 @@ final class Imagetransformer extends CMSPlugin implements SubscriberInterface
         if ($changed) {
             $article->images = json_encode($images);
         }
+    }
+
+    /**
+     * Check the context against the configured allowlist.
+     * Entries are matched literally, a trailing '*' allows prefix
+     * wildcards like 'com_content.*'.
+     */
+    private function isAllowedContext(string $context): bool
+    {
+        $patterns = (string) $this->params->get(
+            'content-contexts',
+            "com_content.*\ncom_contact.*\ncom_tags.*\nmod_custom.content"
+        );
+
+        foreach (preg_split('/[\r\n;]+/', $patterns) as $pattern) {
+            $pattern = trim($pattern);
+
+            if ($pattern === '') {
+                continue;
+            }
+
+            if (str_ends_with($pattern, '*')
+                ? str_starts_with($context, substr($pattern, 0, -1))
+                : $context === $pattern) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
